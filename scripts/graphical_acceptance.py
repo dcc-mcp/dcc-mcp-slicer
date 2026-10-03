@@ -43,7 +43,8 @@ def listeners():
     for fd in Path("/proc/self/fd").iterdir():
         try:
             link = os.readlink(fd)
-        except OSError:
+        except FileNotFoundError:
+            # The owned descriptor may close between inventory and readlink.
             continue
         if link.startswith("socket:["):
             inodes.add(link[8:-1])
@@ -60,17 +61,49 @@ def listeners():
 
 
 server = None
+restarted = None
 client = None
 log = None
+timer = None
 start = time.monotonic()
-baseline = set(listeners())
+baseline = set()
 
 
-def finish():
-    if client.poll() is None and time.monotonic() - start < 300:
+def wait_for_owned_listeners():
+    """Allow Core's native HTTP shutdown to drain, with a fixed deadline."""
+    deadline = time.monotonic() + 2.0
+    while True:
+        remaining = sorted(set(listeners()) - baseline)
+        if not remaining or time.monotonic() >= deadline:
+            return remaining
+        time.sleep(0.01)
+
+
+def finish(force=False):
+    global restarted
+    if STATE.get("finishing"):
         return
-    timer.stop()
     try:
+        if not force and client is not None and client.poll() is None and time.monotonic() - start < 300:
+            return
+    except BaseException:
+        STATE["status"] = "FAIL"
+        STATE.setdefault("traceback", traceback.format_exc())
+        force = True
+    STATE["finishing"] = True
+    STATE.setdefault("status", "FAIL")
+
+    def record_failure(phase):
+        STATE["status"] = "FAIL"
+        detail = traceback.format_exc()
+        STATE.setdefault("traceback", detail)
+        STATE.setdefault("finish_tracebacks", {})[phase] = detail
+
+    try:
+        if force:
+            return
+        if timer is not None:
+            timer.stop()
         if client.poll() is None:
             client.kill()
             client.wait(timeout=10)
@@ -101,26 +134,63 @@ def finish():
         server.stop()
         STATE["server_stopped"] = not server.is_running
         STATE["timer_stopped"] = server.host_dispatcher.is_shutdown
-        STATE["listeners_after_stop"] = sorted(set(listeners()) - baseline)
+        STATE["listeners_after_stop"] = wait_for_owned_listeners()
         assert not STATE["listeners_after_stop"]
         # Restart explicitly uses a new server because closed pumps are terminal.
         restarted = dcc_mcp_slicer.start_server(port=0, gateway_port=0, enable_gateway_failover=False)
         STATE["restart_url"] = restarted.mcp_url
         assert restarted.is_running
         restarted.stop()
-        STATE["listeners_after_restart_stop"] = sorted(set(listeners()) - baseline)
+        STATE["listeners_after_restart_stop"] = wait_for_owned_listeners()
         assert not STATE["listeners_after_restart_stop"]
         STATE["status"] = "PASS" if client.returncode == 0 else "FAIL"
     except BaseException:
-        STATE["status"] = "FAIL"
-        STATE["traceback"] = traceback.format_exc()
+        record_failure("acceptance")
     finally:
-        log.close()
-        (OUT / "host-result.json").write_text(json.dumps(STATE, indent=2))
-        slicer.app.exit(0 if STATE["status"] == "PASS" else 1)
+        try:
+            try:
+                if timer is not None:
+                    timer.stop()
+            except BaseException:
+                record_failure("timer_stop")
+            try:
+                if client is not None and client.poll() is None:
+                    client.kill()
+                    client.wait(timeout=10)
+            except BaseException:
+                record_failure("client_stop")
+            for label, owned in (("server", server), ("restarted", restarted)):
+                try:
+                    if owned is not None:
+                        owned.stop()
+                        assert not owned.is_running, "Owned server is still running"
+                        assert owned.host_dispatcher.is_shutdown, "Owned dispatcher is still running"
+                except BaseException:
+                    record_failure(label + "_stop")
+            try:
+                STATE["listeners_after_cleanup"] = wait_for_owned_listeners()
+                assert not STATE["listeners_after_cleanup"], "New listeners remain after cleanup"
+            except BaseException:
+                record_failure("shutdown_verification")
+            try:
+                if log is not None:
+                    log.close()
+            except BaseException:
+                record_failure("log_close")
+            try:
+                (OUT / "host-result.json").write_text(json.dumps(STATE, indent=2))
+            except BaseException:
+                record_failure("result_write")
+                try:
+                    print("SLICER_GRAPHICAL_RESULT " + json.dumps(STATE), flush=True)
+                except BaseException:
+                    record_failure("result_print")
+        finally:
+            slicer.app.exit(0 if STATE["status"] == "PASS" else 1)
 
 
 try:
+    baseline = set(listeners())
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
     slicer.util.mainWindow().resize(1200, 900)
     STATE["initial_storable_nodes"] = [
@@ -179,9 +249,4 @@ try:
 except BaseException:
     STATE["status"] = "FAIL"
     STATE["traceback"] = traceback.format_exc()
-    if server is not None:
-        server.stop()
-    if log is not None:
-        log.close()
-    (OUT / "host-result.json").write_text(json.dumps(STATE, indent=2))
-    slicer.app.exit(1)
+    finish(force=True)

@@ -31,6 +31,9 @@ from dcc_mcp_slicer import start_server
 OUT = Path(os.environ["DCC_MCP_SLICER_WORKSPACE"])
 OUT.mkdir(parents=True, exist_ok=True)
 STATE = {"adapter_module_file": dcc_mcp_slicer.__file__, "core_module_file": dcc_mcp_core.__file__}
+server = None
+finish_timer = None
+client_thread = None
 
 
 class Client:
@@ -150,20 +153,35 @@ def finish_if_done():
 
     try:
         try:
-            finish_timer.stop()
+            if finish_timer is not None:
+                finish_timer.stop()
         except BaseException:
             record_failure("timer_stop")
         try:
-            server.stop()
+            if server is not None:
+                server.stop()
         except BaseException:
             record_failure("server_stop")
         try:
-            STATE["server_stopped"] = not server.is_running
-            STATE["remaining_new_listeners"] = sorted(list(set(listeners()) - set(BASELINE_LISTENERS)))
+            STATE["server_stopped"] = server is None or not server.is_running
+            # Core may return before its native HTTP thread closes the listener.
+            # Observe bounded quiescence rather than treating that drain as a leak.
+            deadline = time.monotonic() + 2.0
+            while True:
+                STATE["remaining_new_listeners"] = sorted(set(listeners()) - set(BASELINE_LISTENERS))
+                if not STATE["remaining_new_listeners"] or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
             assert STATE["server_stopped"], "Server is still running after shutdown"
             assert not STATE["remaining_new_listeners"], "New listeners remain after shutdown"
         except BaseException:
             record_failure("shutdown_verification")
+        try:
+            if client_thread is not None and client_thread.ident is not None:
+                client_thread.join(timeout=2.0)
+                assert not client_thread.is_alive(), "Client worker remains after completion"
+        except BaseException:
+            record_failure("client_join")
         try:
             STATE["version"] = str(slicer.app.applicationVersion)
             STATE["main_thread_id"] = MAIN_THREAD
@@ -191,14 +209,13 @@ def listeners():
     for fd in Path("/proc/self/fd").iterdir():
         try:
             link = os.readlink(fd)
-        except OSError:
+        except FileNotFoundError:
+            # The owned descriptor may close between inventory and readlink.
             continue
         if link.startswith("socket:["):
             inodes.add(link[8:-1])
     result = []
     for path in ("/proc/net/tcp", "/proc/net/tcp6"):
-        if not Path(path).exists():
-            continue
         for line in Path(path).read_text().splitlines()[1:]:
             parts = line.split()
             if parts[3] == "0A" and parts[9] in inodes:
@@ -210,8 +227,9 @@ def listeners():
 
 
 MAIN_THREAD = threading.get_ident()
-BASELINE_LISTENERS = listeners()
+BASELINE_LISTENERS = []
 try:
+    BASELINE_LISTENERS = listeners()
     server = start_server(
         port=0,
         gateway_port=0,
@@ -229,7 +247,10 @@ try:
     finish_timer.setInterval(50)
     finish_timer.connect("timeout()", finish_if_done)
     finish_timer.start()
-    threading.Thread(target=run_client, args=(url,), daemon=True).start()
+    client_thread = threading.Thread(target=run_client, args=(url,), daemon=True)
+    client_thread.start()
 except BaseException:
-    (OUT / "result.json").write_text(json.dumps({"status": "FAIL", "traceback": traceback.format_exc()}, indent=2))
-    slicer.app.exit(1)
+    STATE["status"] = "FAIL"
+    STATE["traceback"] = traceback.format_exc()
+    STATE["done"] = True
+    finish_if_done()
