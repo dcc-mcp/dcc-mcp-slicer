@@ -1,0 +1,1304 @@
+tools:
+- name: scene_info
+  description: Inspect bounded metadata for adapter-created synthetic nodes.
+  source_file: scripts/scene_info.py
+  input_schema:
+    type: object
+    properties:
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 100
+    required: []
+    additionalProperties: false
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: &id001
+                type: integer
+              main_thread_id: *id001
+              application_version: &id002
+                type: string
+              nodes:
+                type: array
+                items: &id005
+                  type: object
+                  oneOf:
+                  - type: object
+                    properties:
+                      node_id: *id002
+                      name: *id002
+                      kind:
+                        const: volume
+                      revision: &id004
+                        type: string
+                        pattern: ^[0-9a-f]{64}$
+                      dimensions:
+                        type: array
+                        items: *id001
+                        minItems: 3
+                        maxItems: 3
+                      spacing:
+                        type: array
+                        items: &id003
+                          type: number
+                        minItems: 3
+                        maxItems: 3
+                      origin:
+                        type: array
+                        items: *id003
+                        minItems: 3
+                        maxItems: 3
+                      scalar_range:
+                        type: array
+                        items: *id003
+                        minItems: 2
+                        maxItems: 2
+                    required:
+                    - node_id
+                    - name
+                    - kind
+                    - revision
+                    - dimensions
+                    - spacing
+                    - origin
+                    - scalar_range
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      node_id: *id002
+                      name: *id002
+                      kind:
+                        const: sphere
+                      revision: *id004
+                      points: *id001
+                      cells: *id001
+                      bounds:
+                        type: array
+                        items: *id003
+                        minItems: 6
+                        maxItems: 6
+                      color:
+                        type: array
+                        items: *id003
+                        minItems: 3
+                        maxItems: 3
+                      opacity: *id003
+                    required:
+                    - node_id
+                    - name
+                    - kind
+                    - revision
+                    - points
+                    - cells
+                    - bounds
+                    - color
+                    - opacity
+                    additionalProperties: false
+                maxItems: 100
+              count: *id001
+              truncated: &id009
+                type: boolean
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - application_version
+            - nodes
+            - count
+            - truncated
+            additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true
+    open_world_hint: false
+- name: create_volume
+  description: Create an int16 mathematical sphere volume, bounded to 128 cubed voxels.
+  source_file: scripts/create_volume.py
+  input_schema:
+    type: object
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 64
+        pattern: ^[A-Za-z0-9 _-]+$
+        default: Synthetic volume
+      size:
+        type: integer
+        minimum: 8
+        maximum: 128
+        default: 32
+      spacing:
+        type: number
+        minimum: 0.01
+        maximum: 100
+        default: 1
+      value:
+        type: integer
+        minimum: 1
+        maximum: 32767
+        default: 120
+    required: []
+    additionalProperties: false
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: *id001
+              main_thread_id: *id001
+              node: *id005
+              scalar_range:
+                type: array
+                items: *id003
+                minItems: 2
+                maxItems: 2
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - node
+            - scalar_range
+            additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations: &id010
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: false
+    open_world_hint: false
+  next-tools: &id011
+    on-failure:
+    - scene_info
+- name: create_sphere
+  description: Create a bounded synthetic polygonal sphere model.
+  source_file: scripts/create_sphere.py
+  input_schema:
+    type: object
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 64
+        pattern: ^[A-Za-z0-9 _-]+$
+        default: Synthetic sphere
+      radius:
+        type: number
+        minimum: 0.01
+        maximum: 1000
+        default: 10
+      resolution:
+        type: integer
+        minimum: 8
+        maximum: 64
+        default: 32
+    required: []
+    additionalProperties: false
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: *id001
+              main_thread_id: *id001
+              node: *id005
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - node
+            additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: false
+    open_world_hint: false
+  next-tools:
+    on-failure:
+    - scene_info
+- name: edit_sphere
+  description: Replace synthetic sphere geometry and set its display color and opacity.
+  source_file: scripts/edit_sphere.py
+  input_schema:
+    type: object
+    properties:
+      node_id: &id006
+        type: string
+        minLength: 1
+        maxLength: 128
+      radius:
+        type: number
+        minimum: 0.01
+        maximum: 1000
+        default: 12
+      red:
+        type: number
+        minimum: 0
+        maximum: 1
+        default: 0.2
+      green:
+        type: number
+        minimum: 0
+        maximum: 1
+        default: 0.7
+      blue:
+        type: number
+        minimum: 0
+        maximum: 1
+        default: 0.9
+      opacity:
+        type: number
+        minimum: 0
+        maximum: 1
+        default: 1
+      expected_revision:
+        type: string
+        pattern: ^[0-9a-f]{64}$
+        description: Optional optimistic concurrency guard from the most recent node
+          readback.
+    required:
+    - node_id
+    additionalProperties: false
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: *id001
+              main_thread_id: *id001
+              node: *id005
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - node
+            additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: true
+    open_world_hint: false
+  next-tools:
+    on-failure:
+    - scene_info
+- name: export_node
+  description: Export a synthetic volume as NRRD or sphere as STL without replacing
+    files.
+  source_file: scripts/export_node.py
+  input_schema:
+    type: object
+    properties:
+      node_id: *id006
+      filename:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,80}\.(nrrd|stl)$
+      expected_revision:
+        type: string
+        pattern: ^[0-9a-f]{64}$
+        description: Optional optimistic concurrency guard from the most recent node
+          readback.
+    required:
+    - node_id
+    - filename
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      required:
+      - success
+      - message
+      - error
+      - context
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        prompt:
+          type:
+          - string
+          - 'null'
+        context:
+          type: object
+        postcondition:
+          type: object
+        _meta:
+          type: object
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            success:
+              const: true
+        then:
+          properties:
+            context:
+              type: object
+              properties:
+                execution_thread_id: *id001
+                main_thread_id: *id001
+                filename: *id002
+                bytes: &id007
+                  type: integer
+                  minimum: 1
+                  maximum: 268435456
+                sha256: &id008
+                  type: string
+                  pattern: ^[0-9a-f]{64}$
+                node: *id005
+              required:
+              - execution_thread_id
+              - main_thread_id
+              - filename
+              - bytes
+              - sha256
+              - node
+              additionalProperties: false
+    - type: object
+      required:
+      - job_id
+      - status
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - cancelled
+          - interrupted
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+      additionalProperties: true
+  execution: async
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 120
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: false
+    open_world_hint: false
+  job_strategy: monolithic
+  next-tools:
+    on-failure:
+    - scene_info
+- name: save_scene
+  description: Save a synthetic-only scene to a new MRB bundle with an integrity receipt.
+  source_file: scripts/save_scene.py
+  input_schema:
+    type: object
+    properties:
+      filename:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,80}\.mrb$
+    required:
+    - filename
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      required:
+      - success
+      - message
+      - error
+      - context
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        prompt:
+          type:
+          - string
+          - 'null'
+        context:
+          type: object
+        postcondition:
+          type: object
+        _meta:
+          type: object
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            success:
+              const: true
+        then:
+          properties:
+            context:
+              type: object
+              properties:
+                execution_thread_id: *id001
+                main_thread_id: *id001
+                filename: *id002
+                bytes: *id007
+                sha256: *id008
+                synthetic_nodes: *id001
+              required:
+              - execution_thread_id
+              - main_thread_id
+              - filename
+              - bytes
+              - sha256
+              - synthetic_nodes
+              additionalProperties: false
+    - type: object
+      required:
+      - job_id
+      - status
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - cancelled
+          - interrupted
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+      additionalProperties: true
+  execution: async
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 120
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: false
+    open_world_hint: false
+  job_strategy: monolithic
+  next-tools:
+    on-failure:
+    - scene_info
+- name: reopen_scene
+  description: Additively reopen an unchanged adapter-saved synthetic MRB bundle.
+  source_file: scripts/reopen_scene.py
+  input_schema:
+    type: object
+    properties:
+      filename:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,80}\.mrb$
+    required:
+    - filename
+    additionalProperties: false
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      required:
+      - success
+      - message
+      - error
+      - context
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        prompt:
+          type:
+          - string
+          - 'null'
+        context:
+          type: object
+        postcondition:
+          type: object
+        _meta:
+          type: object
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            success:
+              const: true
+        then:
+          properties:
+            context:
+              type: object
+              properties:
+                execution_thread_id: *id001
+                main_thread_id: *id001
+                filename: *id002
+                nodes_before: *id001
+                nodes_after: *id001
+                imported_nodes: *id001
+              required:
+              - execution_thread_id
+              - main_thread_id
+              - filename
+              - nodes_before
+              - nodes_after
+              - imported_nodes
+              additionalProperties: false
+    - type: object
+      required:
+      - job_id
+      - status
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - cancelled
+          - interrupted
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+      additionalProperties: true
+  execution: async
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 120
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: false
+    open_world_hint: false
+  job_strategy: monolithic
+  next-tools:
+    on-failure:
+    - scene_info
+- name: capabilities
+  description: Read adapter scope and bounds without touching Slicer.
+  source_file: scripts/capabilities.py
+  input_schema:
+    type: object
+    properties: {}
+    additionalProperties: false
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              application: *id002
+              max_volume_edge: *id001
+              max_sphere_resolution: *id001
+              exports:
+                type: array
+                items: *id002
+              supported_host: *id002
+              max_synthetic_nodes: *id001
+              max_png_edge: *id001
+              graphics_context_required_for_png: *id009
+              patient_data:
+                const: false
+              reopen_mode: *id002
+              native_calls_interruptible:
+                const: false
+            required:
+            - application
+            - max_volume_edge
+            - max_sphere_resolution
+            - exports
+            - supported_host
+            - max_synthetic_nodes
+            - max_png_edge
+            - graphics_context_required_for_png
+            - patient_data
+            - reopen_mode
+            - native_calls_interruptible
+            additionalProperties: false
+  execution: sync
+  affinity: any
+  timeout_hint_secs: 5
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true
+    open_world_hint: false
+- name: create_phantom
+  description: Create a centered deterministic mathematical phantom with sphere and
+    cylinder inclusions.
+  source_file: scripts/create_phantom.py
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        default: Synthetic materials phantom
+        maxLength: 64
+        minLength: 1
+        pattern: ^[A-Za-z0-9 _-]+$
+      size:
+        type: integer
+        minimum: 16
+        maximum: 128
+        default: 64
+      spacing:
+        type: number
+        minimum: 0.01
+        maximum: 100
+        default: 1
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: *id001
+              main_thread_id: *id001
+              node: *id005
+              materials:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    value: *id001
+                    voxels: *id001
+                  required:
+                  - value
+                  - voxels
+                  additionalProperties: false
+                minItems: 4
+                maxItems: 4
+              description: *id002
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - node
+            - materials
+            - description
+            additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations: *id010
+  next-tools: *id011
+- name: configure_camera
+  description: Set a deterministic camera for one synthetic sphere in the first native
+    3D view.
+  source_file: scripts/configure_camera.py
+  input_schema:
+    type: object
+    properties:
+      node_id: &id012
+        type: string
+        minLength: 1
+        maxLength: 128
+      direction:
+        type: string
+        enum:
+        - anterior
+        - posterior
+        - left
+        - right
+        - superior
+        - inferior
+        default: anterior
+      zoom:
+        type: number
+        minimum: 0.25
+        maximum: 4
+        default: 1
+    required:
+    - node_id
+    additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: true
+    open_world_hint: false
+  next-tools:
+    on-failure:
+    - scene_info
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: *id001
+              main_thread_id: *id001
+              node_id: *id002
+              direction: *id002
+              position:
+                type: array
+                items: *id003
+                minItems: 3
+                maxItems: 3
+              focal_point:
+                type: array
+                items: *id003
+                minItems: 3
+                maxItems: 3
+              view_up:
+                type: array
+                items: *id003
+                minItems: 3
+                maxItems: 3
+              parallel_scale: *id003
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - node_id
+            - direction
+            - position
+            - focal_point
+            - view_up
+            - parallel_scale
+            additionalProperties: false
+- name: configure_slice
+  description: Display one synthetic volume as a bounded orthogonal slice in a named
+    native view.
+  source_file: scripts/configure_slice.py
+  input_schema:
+    type: object
+    properties:
+      node_id: *id012
+      view:
+        type: string
+        enum:
+        - Red
+        - Yellow
+        - Green
+        default: Red
+      orientation:
+        type: string
+        enum:
+        - axial
+        - sagittal
+        - coronal
+        default: axial
+      offset_mm:
+        type: number
+        minimum: -10000
+        maximum: 10000
+        default: 0
+    required:
+    - node_id
+    additionalProperties: false
+  execution: sync
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 15
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: true
+    open_world_hint: false
+  next-tools:
+    on-failure:
+    - scene_info
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    - error
+    - context
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      error:
+        type:
+        - string
+        - 'null'
+      prompt:
+        type:
+        - string
+        - 'null'
+      context:
+        type: object
+      postcondition:
+        type: object
+      _meta:
+        type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        properties:
+          success:
+            const: true
+      then:
+        properties:
+          context:
+            type: object
+            properties:
+              execution_thread_id: *id001
+              main_thread_id: *id001
+              node_id: *id002
+              view: *id002
+              orientation: *id002
+              offset_mm: *id003
+            required:
+            - execution_thread_id
+            - main_thread_id
+            - node_id
+            - view
+            - orientation
+            - offset_mm
+            additionalProperties: false
+- name: export_view
+  description: Capture a synthetic native viewport and aspect-fit it into a bounded
+    letterboxed PNG canvas; reports native capture dimensions separately.
+  source_file: scripts/export_view.py
+  input_schema:
+    type: object
+    properties:
+      filename:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,80}\.png$
+      view:
+        type: string
+        enum:
+        - 3D
+        - Red
+        - Yellow
+        - Green
+        default: 3D
+      width:
+        type: integer
+        minimum: 128
+        maximum: 2048
+        default: 800
+      height:
+        type: integer
+        minimum: 128
+        maximum: 2048
+        default: 600
+    required:
+    - filename
+    additionalProperties: false
+  execution: async
+  affinity: main
+  requires_in_process: true
+  enforce_thread_affinity: true
+  timeout_hint_secs: 120
+  annotations:
+    read_only_hint: false
+    destructive_hint: true
+    idempotent_hint: false
+    open_world_hint: false
+  next-tools:
+    on-failure:
+    - scene_info
+  job_strategy: monolithic
+  output_schema:
+    type: object
+    anyOf:
+    - type: object
+      required:
+      - success
+      - message
+      - error
+      - context
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        prompt:
+          type:
+          - string
+          - 'null'
+        context:
+          type: object
+        postcondition:
+          type: object
+        _meta:
+          type: object
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            success:
+              const: true
+        then:
+          properties:
+            context:
+              type: object
+              properties:
+                execution_thread_id: *id001
+                main_thread_id: *id001
+                filename: *id002
+                bytes: *id007
+                sha256: *id008
+                view: *id002
+                width: *id001
+                height: *id001
+                scalar_range:
+                  type: array
+                  items: *id003
+                  minItems: 2
+                  maxItems: 2
+                source_dimensions:
+                  type: array
+                  items: *id001
+                  minItems: 3
+                  maxItems: 3
+                content_dimensions:
+                  type: array
+                  items:
+                    type: integer
+                  minItems: 2
+                  maxItems: 2
+                viewport_offset:
+                  type: array
+                  items:
+                    type: integer
+                  minItems: 2
+                  maxItems: 2
+                aspect_ratio_preserved:
+                  const: true
+                fit_mode:
+                  const: contain
+                resample_scale:
+                  type: array
+                  items:
+                    type: number
+                  minItems: 2
+                  maxItems: 2
+                padding:
+                  type: array
+                  items:
+                    type: integer
+                    minimum: 0
+                  minItems: 4
+                  maxItems: 4
+              required:
+              - execution_thread_id
+              - main_thread_id
+              - filename
+              - bytes
+              - sha256
+              - view
+              - width
+              - height
+              - scalar_range
+              - source_dimensions
+              - content_dimensions
+              - viewport_offset
+              - aspect_ratio_preserved
+              - fit_mode
+              - resample_scale
+              - padding
+              additionalProperties: false
+    - type: object
+      required:
+      - job_id
+      - status
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - cancelled
+          - interrupted
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+      additionalProperties: true
