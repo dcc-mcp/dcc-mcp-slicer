@@ -140,18 +140,49 @@ def run_client(url):
 
 
 def finish_if_done():
-    if not STATE.get("done"):
+    if not STATE.get("done") or STATE.get("finishing"):
         return
-    finish_timer.stop()
-    server.stop()
-    STATE["server_stopped"] = not server.is_running
-    STATE["remaining_new_listeners"] = sorted(list(set(listeners()) - set(BASELINE_LISTENERS)))
-    assert not STATE["remaining_new_listeners"]
-    STATE["version"] = str(slicer.app.applicationVersion)
-    STATE["main_thread_id"] = MAIN_THREAD
-    (OUT / "result.json").write_text(json.dumps(STATE, indent=2), encoding="utf-8")
-    print("SLICER_MCP_RESULT " + json.dumps(STATE), flush=True)
-    slicer.app.exit(0 if STATE["status"] == "PASS" else 1)
+    STATE["finishing"] = True
+
+    def record_failure(phase):
+        STATE["status"] = "FAIL"
+        STATE.setdefault("finish_tracebacks", {})[phase] = traceback.format_exc()
+
+    try:
+        try:
+            finish_timer.stop()
+        except BaseException:
+            record_failure("timer_stop")
+        try:
+            server.stop()
+        except BaseException:
+            record_failure("server_stop")
+        try:
+            STATE["server_stopped"] = not server.is_running
+            STATE["remaining_new_listeners"] = sorted(list(set(listeners()) - set(BASELINE_LISTENERS)))
+            assert STATE["server_stopped"], "Server is still running after shutdown"
+            assert not STATE["remaining_new_listeners"], "New listeners remain after shutdown"
+        except BaseException:
+            record_failure("shutdown_verification")
+        try:
+            STATE["version"] = str(slicer.app.applicationVersion)
+            STATE["main_thread_id"] = MAIN_THREAD
+        except BaseException:
+            record_failure("host_metadata")
+        try:
+            (OUT / "result.json").write_text(json.dumps(STATE, indent=2), encoding="utf-8")
+        except BaseException:
+            record_failure("result_write")
+        try:
+            print("SLICER_MCP_RESULT " + json.dumps(STATE), flush=True)
+        except BaseException:
+            record_failure("result_print")
+            try:
+                (OUT / "result.json").write_text(json.dumps(STATE, indent=2), encoding="utf-8")
+            except BaseException:
+                record_failure("result_write")
+    finally:
+        slicer.app.exit(0 if STATE.get("status") == "PASS" else 1)
 
 
 def listeners():

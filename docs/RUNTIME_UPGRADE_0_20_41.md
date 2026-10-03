@@ -47,7 +47,7 @@ measurement includes skill validation and real loopback HTTP tests, not native
 Slicer execution. Separate installed-wheel evidence must still validate package
 origins and the declared plugin from the built artifact.
 
-The records in `validation.md`, `architecture.md` and `wire-cancellation.md`
+The records in `validation.md`, `architecture.md` and `wire-cancellation-validation.md`
 describe earlier Core/server 0.20.39 measurements. Native Slicer 5.10.0, native
 camera/slice rendering and native asynchronous cancellation must be rerun with
 the exact new installed wheel. The manual `native-wheel` workflow requests this

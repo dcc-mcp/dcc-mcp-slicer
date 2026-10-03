@@ -1,6 +1,6 @@
 # Native wire cancellation and pinned wheel acceptance
 
-The graphical acceptance script now includes a controlled test-only pause after
+The historical Core/server 0.20.39 graphical acceptance includes a controlled test-only pause after
 real Slicer native export has produced a 96,084-byte STL staging file. The official
 MCP SDK receives the export job ID, sends DELETE to that Core job endpoint, and
 then releases the callback into the adapter's existing cancellation checkpoint.
@@ -16,7 +16,9 @@ server-instance restart. Source/installed unit suites remain 76 distinct tests;
 scripted graphical calls are not added to that suite count. Sphere aspect remains
 0.99095 with truthful native-buffer letterboxing.
 
-Both Core and server package requirements now pin the measured 0.20.39 release.
-This prevents normal dependency resolution from silently choosing an unqualified
-future shared runtime. No native adapter implementation changed in this increment.
-Full automated Install SOP and remote exact-head CI remain separate gates.
+Both Core and server package requirements now pin the 0.20.41 candidate. The
+0.20.39 measurements above remain historical and do not qualify this upgrade.
+No native adapter implementation changed in the runtime-pinning increment.
+Native graphical and wire-cancellation acceptance must be repeated with the exact
+new installed wheel; full automated Install SOP and remote exact-head CI remain
+separate gates. See [the runtime upgrade record](RUNTIME_UPGRADE_0_20_41.md).

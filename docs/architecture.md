@@ -50,8 +50,11 @@ capabilities; only trusted clients should connect to the loopback endpoint.
 
 Development consulted the official dcc-mcp-creator and dcc-mcp-skills-creator
 packages and organisation repository/adapter contracts. Runtime code does not
-parse their markdown or declarations. Core 0.20.39 is the exact released artifact
-used for validation; unreleased source-head APIs are not required.
+parse their markdown or declarations. Historical validation used the exact Core
+0.20.39 release. The current candidate pins Core and server to 0.20.41;
+qualification of that upgrade is tracked separately in the
+[runtime upgrade record](RUNTIME_UPGRADE_0_20_41.md). Unreleased source-head APIs
+are not required.
 
 ## Hardened lifecycle and commit boundaries
 
@@ -90,9 +93,11 @@ requires a working native graphical context. No custom GUI input provider is add
 
 ## Core security boundary
 
-Core 0.20.39 exposes stock introspection, dynamic-registration and administrative
-surfaces in addition to this adapter's twelve typed tools. Empty MinimalModeConfig
-does not remove those builtins. This package does not patch private Core internals.
+The historical Core 0.20.39 review found stock introspection, dynamic-registration
+and administrative surfaces in addition to this adapter's twelve typed tools;
+empty MinimalModeConfig did not remove those builtins. These observations describe
+the earlier artifact and do not qualify the pinned Core/server 0.20.41 candidate.
+This package does not patch private Core internals.
 A public least-privilege Core opt-out remains an upstream requirement before this
 endpoint could be offered to untrusted clients. Loopback is a reachability limit,
 not authentication. The artifact workspace restrictions apply to typed adapter
