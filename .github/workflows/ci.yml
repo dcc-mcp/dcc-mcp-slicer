@@ -1,0 +1,87 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      native:
+        description: Run a fresh owned Slicer 5.10 graphical acceptance process
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    env:
+      DCC_MCP_DISABLE_DEFAULT_SKILL_PATHS: '1'
+      DCC_MCP_DISABLE_FILE_LOGGING: '1'
+      DCC_MCP_DISABLE_TELEMETRY: '1'
+      DCC_MCP_DISABLE_JOB_PERSISTENCE: '1'
+      DCC_MCP_CHECKPOINT_IN_MEMORY: '1'
+      DCC_MCP_GATEWAY_PORT: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e '.[dev]' 'dcc-mcp-core==0.20.41' 'dcc-mcp-server==0.20.41'
+      - run: python -m ruff check src tests scripts
+      - run: python -m ruff format --check src tests scripts
+      - run: python -m pytest -q
+      - run: python -m build --outdir build/dist
+      - run: python -m pip install --no-deps --force-reinstall build/dist/*.whl
+      - name: Verify installed artifact and SDK tests
+        run: |
+          python -I -c "import dcc_mcp_slicer; assert 'site-packages' in dcc_mcp_slicer.__file__, dcc_mcp_slicer.__file__"
+          python -m pytest -o pythonpath='' -q
+  contract:
+    uses: dcc-mcp/.github/.github/workflows/repo-contract.yml@main
+  native-wheel:
+    if: github.event_name == 'workflow_dispatch' && inputs.native
+    runs-on: [self-hosted, linux, slicer-5-10]
+    timeout-minutes: 15
+    env:
+      # The runner owner supplies a dedicated test display and exact vendor binary.
+      DISPLAY: ${{ vars.SLICER_TEST_DISPLAY }}
+      SLICER_BIN: ${{ vars.SLICER_5_10_EXECUTABLE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require the explicitly provisioned native profile
+        run: test -n "$DISPLAY" && test -n "$SLICER_BIN" && test -x "$SLICER_BIN"
+      - name: Build and install the tested wheel
+        run: |
+          python -m pip install build
+          python -m build --outdir build/dist
+          python -m venv "$RUNNER_TEMP/slicer-sdk"
+          "$RUNNER_TEMP/slicer-sdk/bin/python" -m pip install build/dist/*.whl 'dcc-mcp-core==0.20.41' 'dcc-mcp-server==0.20.41' 'mcp==1.30.0' pytest jsonschema PyYAML
+      - name: Verify package origin and portable suite
+        run: |
+          PYTHON="$RUNNER_TEMP/slicer-sdk/bin/python"
+          "$PYTHON" -I -c 'import dcc_mcp_slicer; assert "site-packages" in dcc_mcp_slicer.__file__'
+          "$PYTHON" -m pytest -o pythonpath='' -q
+      - name: Verify a new graphical host through the real MCP SDK
+        env:
+          DCC_MCP_SLICER_TEST_INSTALLED: '1'
+        run: |
+          export DCC_MCP_SLICER_SDK_PYTHON="$RUNNER_TEMP/slicer-sdk/bin/python"
+          export DCC_MCP_SLICER_TEST_SITE="$("$DCC_MCP_SLICER_SDK_PYTHON" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+          export DCC_MCP_SLICER_ACCEPTANCE_ROOT="$(mktemp -d "$RUNNER_TEMP/slicer-acceptance-XXXXXX")"
+          echo "SLICER_ACCEPTANCE_ARTIFACTS=$DCC_MCP_SLICER_ACCEPTANCE_ROOT/artifacts" >> "$GITHUB_ENV"
+          bash scripts/run_graphical_acceptance.sh
+          "$DCC_MCP_SLICER_SDK_PYTHON" -c 'import json,os,pathlib; p=pathlib.Path(os.environ["DCC_MCP_SLICER_ACCEPTANCE_ROOT"])/"artifacts"; assert json.loads((p/"host-result.json").read_text())["status"]=="PASS"; assert json.loads((p/"sdk-result.json").read_text())["status"]=="PASS"'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slicer-native-evidence
+          path: |
+            ${{ env.SLICER_ACCEPTANCE_ARTIFACTS }}
+            build/dist/
